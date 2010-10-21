@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using FizzWare.NBuilder;
 using Norm;
 using Norm.Configuration;
@@ -47,6 +48,7 @@ namespace NoRMSamples
             {
                 //deletes generated posts from db
                 db.GetCollection<Post>().Delete(new{});
+            
             }
             _proc.Dispose();
         }
@@ -81,12 +83,12 @@ namespace NoRMSamples
 
                 //MongoDB shell: db.posts.find({Title: 'Title 1',AuthorName:'Author 1'})
 
-                var postsFromLinqProviderQuery = db.GetCollection<Post>().AsQueryable().Where(post=>post.Title=="Title 1" && post.AuthorName=="Author 1").ToList();
+                var postsFromLinqProviderQuery = db.GetCollection<Post>().AsQueryable().Where(post=>post.Title=="Title1" && post.AuthorName=="AuthorName1").ToList();
 
-                var postsAnonymousObjects = db.GetCollection<Post>().Find(new{ Title="Title 1", AuthorName="Author 1"}).ToList();
+                var postsAnonymousObjects = db.GetCollection<Post>().Find(new{ Title="Title1", AuthorName="AuthorName1"}).ToList();
 
                 //this is in memory query
-                var postsInDbWithTitleAndAuthorName=_postsInDb.Where(post => post.Title == "Title 1" && post.AuthorName == "Author 1");
+                var postsInDbWithTitleAndAuthorName=_postsInDb.Where(post => post.Title == "Title1" && post.AuthorName == "AuthorName1");
 
                 postsFromLinqProviderQuery.ShouldContainOnly(postsInDbWithTitleAndAuthorName);
                 postsAnonymousObjects.ShouldContainOnly(postsInDbWithTitleAndAuthorName);
@@ -100,14 +102,14 @@ namespace NoRMSamples
             //MongoDB shell: db.posts.find({_id:1});
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
-                var postFromLinqProviderQuery = db.GetCollection<Post>().AsQueryable().Single(p => p.Id == 1);
-                var postAnonymousObjects = db.GetCollection<Post>().FindOne(new { Id = 1 });
+                var postFromLinqProviderQuery = db.GetCollection<Post>().AsQueryable().Single(p => p.Id == _postsInDb[0].Id);
+                var postAnonymousObjects = db.GetCollection<Post>().FindOne(new { Id = _postsInDb[0].Id });
 
                 postFromLinqProviderQuery.ShouldNotBeNull();
                 postAnonymousObjects.ShouldNotBeNull();
 
-                postFromLinqProviderQuery.Id.ShouldEqual(1);
-                postAnonymousObjects.Id.ShouldEqual(1);
+                postFromLinqProviderQuery.Id.ShouldEqual(_postsInDb[0].Id);
+                postAnonymousObjects.Id.ShouldEqual(_postsInDb[0].Id);
 
             }
         }
@@ -147,7 +149,7 @@ namespace NoRMSamples
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
-                // mongoDB: db.posts.find({Statistics.VotesCount: 3}, {Body: 1});
+                // mongoDB: db.posts.find({Statistics.VotesCount: 3}, {Statistics.ViewsCount: 1});
                 var postsBodyLinq = db.GetCollection<Post>().AsQueryable().Where(p => p.Statistics.VotesCount == 3).Select(p => p.Statistics.ViewsCount).ToList();
                
                 //in memory
@@ -155,6 +157,31 @@ namespace NoRMSamples
 
           
                 postsBodyLinq.ShouldContainOnly(postBodyFromDB);
+
+
+            }
+        }
+
+        [Test]
+        public void should_return_List_of_PostViewModels_from_posts_with_votes_count_less_than_3()
+        {
+            using (var db = Mongo.Create(TestHelper.ConnectionString()))
+            {
+                // mongoDB: db.posts.find({'Statistics.VotesCount': 3}, {Body:1,CreationDate:1,'Statistics.VotesCount': 1});
+
+                var postsBodyLinq = db.GetCollection<Post>().AsQueryable()
+                                                            .Where(p => p.Statistics.VotesCount < 3)
+                                                            .Select(p => new PostViewModel
+                                                            {
+                                                                Body=p.Body,
+                                                                Id=p.Id,
+                                                                CreationDate=p.CreationDate,
+                                                                VotesCount=p.Statistics.VotesCount
+                                                            }).ToList();
+               
+               //todo:assert
+          
+             
 
 
             }
@@ -202,12 +229,12 @@ namespace NoRMSamples
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
 
-                //MongoDB: db.posts.find().limit(20);
-                var postsFromLinqProviderQuery = db.GetCollection<Post>().AsQueryable().OrderByDescending(post=>post.CreationDate).Take(20).ToList();
+                //MongoDB: db.posts.find().limit(20).sort({CreationDate:-1});
+                var postsFromLinqProviderQuery = db.GetCollection<Post>().AsQueryable().OrderByDescending(post => post.CreationDate).Take(20).ToList();
                 var postsAnonymousObjects = db.GetCollection<Post>().Find(new {},new{CreationDate=OrderBy.Descending}, 20,0).ToList();
 
-                postsFromLinqProviderQuery.ShouldContainOnly(_postsInDb.OrderByDescending(x => x.CreationDate));
-                postsAnonymousObjects.ShouldContainOnly(_postsInDb.OrderByDescending(x => x.CreationDate));
+                postsFromLinqProviderQuery.ShouldContainOnly(_postsInDb.OrderByDescending(x => x.CreationDate).Take(20).ToList());
+                postsAnonymousObjects.ShouldContainOnly(_postsInDb.OrderByDescending(x => x.CreationDate).Take(20).ToList());
             }
         }
 
@@ -337,6 +364,7 @@ namespace NoRMSamples
         }
         }
 
+
         [Test]
         public void should_return_all_posts_with_tags_c_sharp_and_python()
         {
@@ -348,119 +376,157 @@ namespace NoRMSamples
 
                 var posts = db.GetCollection<Post>().Find(new { Tags = Q.All("python", "c#") }).ToList();
 
+
             }
         }
-
-        public void should_return_all_posts_with_viewsCount_not_equal_3_and_not_equal_5()
+        [Test]
+        public void should_return_all_posts_with_AuthorName_not_equal_Rob_and_not_equal_John()
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
 
                 //todo:sprawdzić
-                //MongoDB shell: db.posts.find({'Statistics.ViewsCount:{$nin:3}});
+                //MongoDB shell: db.posts.find({'AuthorNaame:{$nin:['Author 1','John']}});
 
-                var posts = db.GetCollection<Post>().Find(new { AuthorName = Q.NotIn("Author 1", "John") }).ToList();
+                var posts = db.GetCollection<Post>().Find(new { AuthorName = Q.NotIn("AuthorName1", "John") }).ToList();
 
+                //var authorNames=new List<string>{"AuthorName1","John"};
+                //var postsLinq=db.GetCollection<Post>().AsQueryable().Where(post=>)
 
-                var postsInDB = _postsInDb.Where(post => post.AuthorName != "Author 1" && post.AuthorName!="John");
+                var postsInDB = _postsInDb.Where(post => post.AuthorName != "AuthorName1" && post.AuthorName != "John").ToList();
                 posts.ShouldContainOnly(postsInDB);
                
 
             }
         }
-
+        [Test]
         public void should_return_all_posts_where_AuthorId_exists()
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
-                //todo poprawić
-                //MongoDB shell: db.posts.find({'Statistics.ViewsCount:{$ne:3}});
+              
 
                 var posts = db.GetCollection<Post>().Find(new { AuthorId = Q.Exists(true) }).ToList();
 
-                posts.ShouldBeNull();
+                posts.ShouldBeEmpty();
 
 
             }
         }
-
+        [Test]
         public void should_return_all_posts_where_AuthorName_equals_Author_1_or_tag_equal_c_sharp()
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
 
-                //MongoDB shell: db.posts.find({'Statistics.ViewsCount:{$ne:3}});
-
-                var posts = db.GetCollection<Post>().Find(Q.Or(new {AuthorName="Autohr 1"},new {Tags="c#"})).ToList();
-                //todo:assert
-                posts.ShouldBeNull();
+                //MongoDB shell: db.posts.find({$or:[ { AuthorName : "AuthorName1" } , { Tags : "c#" } ]});
+               
+                var posts = db.GetCollection<Post>().Find(Q.Or(new {AuthorName="AuthorName1"},new {Tags="c#"})).ToList();
+               
+                posts.Count.ShouldEqual(30);
 
 
             }
         }
-
+        [Test]
         public void should_return_all_posts_where_title_starts_with_title()
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
 
-                //MongoDB shell: db.posts.find({'Statistics.ViewsCount:{$ne:3}});
-
-                var posts = db.GetCollection<Post>().Find(new {Title="^Title"}).ToList();
-                //todo:assert
-                posts.ShouldBeNull();
+            
+                var posts2 =
+                    db.GetCollection<Post>().AsQueryable().Where(post => Regex.IsMatch(post.Title, "^Title")).ToList();
+               
+                posts2.Count.ShouldEqual(30);
 
 
             }
         }
+        [Test]
         public void should_return_all_posts_with_tag_python()
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
 
-                //MongoDB shell: db.posts.find({'Statistics.ViewsCount:{$ne:3}});
+                //MongoDB shell: db.posts.find({Tags:"python"});
 
                 var posts = db.GetCollection<Post>().Find(new { Tags = "python" }).ToList();
                 var posts2 =
                     db.GetCollection<Post>().AsQueryable().Where(post => post.Tags.Any(x => x == "python")).ToList();
-                //todo:assert
-                posts.ShouldBeNull();
+                posts2.ForEach(x=>x.Tags.ShouldContain("python"));
+                posts.ForEach(x=>x.Tags.ShouldContain("python"));
 
 
             }
         }
+        [Test]
+        public void should_return_total_count_of_posts_in_db_where_author_name_equals_AuthotName1()
+        {
+            using (var db = Mongo.Create(TestHelper.ConnectionString()))
+            {
 
+                //MongoDB shell: db.posts.find({AuthorName:"AuthorName1"}).count();
+
+                var postsCount = db.GetCollection<Post>().Count(new {AuthorName="AuthorName1"});
+               
+               
+                postsCount.ShouldEqual(1);
+
+            }
+            
+
+        }
+        [Test]
         public void should_return_all_posts_where_comments_body_is_equal_Body_1_and_comments_author_name_is_equal_Author1()
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
 
-                //MongoDB shell: db.posts.find({'Statistics.ViewsCount:{$ne:3}});
+               
 
-                var posts = db.GetCollection<Post>().Find(new {Comments= Q.ElementMatch(new Comment(){AuthorName = "Autohr 1",Body = "body 1"}) }).ToList();
-               //todo:assert
+                var posts = db.GetCollection<Post>().Find(new {Comments= Q.ElementMatch(new Comment(){AuthorName = "AuthorName1",Body = "Body1"}) }).ToList();
+              
 
-                posts.ShouldBeNull();
+                posts.Count.ShouldEqual(30);
 
 
             }
         }
-
+        [Test]
         public void should_return_all_posts_where_second_comment_author_name_equals_Author_2()
         {
             using (var db = Mongo.Create(TestHelper.ConnectionString()))
             {
 
-                //MongoDB shell: db.posts.find({'Statistics.ViewsCount:{$ne:3}});
+                //MongoDB shell: db.posts.find({'Comments.1.AuthorName':'Author 1'});
 
                 var posts =
                     db.GetCollection<Post>().AsQueryable().Where(x => x.Comments[1].AuthorName == "Author 1").ToList();
 
-                //todo:assert
-                posts.ShouldBeNull();
+                
+                posts.ShouldBeEmpty();
 
 
             }
+        }
+        [Test]
+        public void should_return_distinct_tags_from_posts_collections()
+        {
+            using (var db = Mongo.Create(TestHelper.ConnectionString()))
+            {
+
+                //MongoDB shell: db.posts.distict('Tags');
+
+                var tags =
+                    db.GetCollection<Post>().Distinct<string>("Tags");
+
+                //todo:assert
+                tags.Count().ShouldEqual(3);
+
+
+            }
+            
         }
     }
 }

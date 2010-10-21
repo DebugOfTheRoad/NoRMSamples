@@ -56,6 +56,7 @@
     <Compile Include="MongodHelper.cs" />
     <Compile Include="NUnitExtensions.cs" />
     <Compile Include="Post.cs" />
+    <Compile Include="PostViewModel.cs" />
     <Compile Include="QueringExamples.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PostStatistics.cs" />
